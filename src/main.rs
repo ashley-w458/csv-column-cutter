@@ -1,4 +1,4 @@
-use csvcut::CsvReader;
+use csvcut::{quote_field, CsvReader};
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::process::ExitCode;
@@ -64,7 +64,12 @@ fn run<R: Read, W: Write>(input: R, out: &mut W, fields: &Option<Vec<usize>>) ->
     for record in CsvReader::new(input) {
         let record = record?;
         let row = select(&record, fields);
-        writeln!(out, "{}", row.join(","))?;
+        let line = row
+            .iter()
+            .map(|f| quote_field(f))
+            .collect::<Vec<_>>()
+            .join(",");
+        writeln!(out, "{line}")?;
     }
     Ok(())
 }

@@ -39,7 +39,7 @@ csvcut --fields 1,3 data.csv
 # from stdin
 cat data.csv | csvcut --fields 2
 
-# passthrough (re-serializes, quoting untouched — see Known limitations)
+# passthrough (re-serializes with RFC 4180 quoting)
 csvcut data.csv
 ```
 
@@ -68,9 +68,6 @@ same way against a `File`, a `TcpStream`, or `Stdin`.
 
 ## Known limitations (first pass)
 
-- Output is not re-quoted: a selected field that itself contains a comma
-  will be written back out unquoted. Fine for now since the common case is
-  picking simple columns; will fix before this is used on messier data.
 - No header-aware mode yet (`--fields name,email` instead of numeric
   indexes).
 - Reads one byte at a time internally, which is correct but not fast on

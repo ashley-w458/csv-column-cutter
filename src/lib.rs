@@ -109,6 +109,28 @@ impl<R: Read> Iterator for CsvReader<R> {
     }
 }
 
+/// Quotes a field for CSV output, per RFC 4180.
+///
+/// A field is wrapped in `"..."` only if it contains a comma, a quote, or a
+/// newline, since those are the characters that would otherwise change how
+/// the field is split back apart. Any literal `"` inside is doubled.
+pub fn quote_field(field: &str) -> String {
+    if !field.contains(['"', ',', '\n', '\r']) {
+        return field.to_string();
+    }
+
+    let mut out = String::with_capacity(field.len() + 2);
+    out.push('"');
+    for c in field.chars() {
+        if c == '"' {
+            out.push('"');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +178,27 @@ mod tests {
     #[test]
     fn empty_input_has_no_records() {
         assert_eq!(records(""), Vec::<Vec<String>>::new());
+    }
+
+    #[test]
+    fn quote_field_leaves_plain_text_alone() {
+        assert_eq!(quote_field("plain"), "plain");
+        assert_eq!(quote_field(""), "");
+    }
+
+    #[test]
+    fn quote_field_wraps_commas() {
+        assert_eq!(quote_field("a,b"), "\"a,b\"");
+    }
+
+    #[test]
+    fn quote_field_doubles_embedded_quotes() {
+        assert_eq!(quote_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn quote_field_wraps_embedded_newlines() {
+        assert_eq!(quote_field("line1\nline2"), "\"line1\nline2\"");
+        assert_eq!(quote_field("a\rb"), "\"a\rb\"");
     }
 }
