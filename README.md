@@ -39,9 +39,15 @@ csvcut --fields 1,3 data.csv
 # from stdin
 cat data.csv | csvcut --fields 2
 
+# by column name, taken from the header row
+csvcut --fields name,email data.csv
+
 # passthrough (re-serializes with RFC 4180 quoting)
 csvcut data.csv
 ```
+
+A field list is treated as names as soon as one entry fails to parse as a
+number, so column names that look like plain integers aren't supported.
 
 `-` also means stdin, so it can sit in the middle of a pipeline that also
 takes flags:
@@ -68,8 +74,6 @@ same way against a `File`, a `TcpStream`, or `Stdin`.
 
 ## Known limitations (first pass)
 
-- No header-aware mode yet (`--fields name,email` instead of numeric
-  indexes).
 - Reads one byte at a time internally, which is correct but not fast on
   very large files.
 
