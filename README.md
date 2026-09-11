@@ -72,11 +72,6 @@ assert_eq!(rows.next().unwrap().unwrap(), vec!["2", "Bob, Jr."]);
 `CsvReader` takes anything that implements `std::io::Read`, so it works the
 same way against a `File`, a `TcpStream`, or `Stdin`.
 
-## Known limitations (first pass)
-
-- Reads one byte at a time internally, which is correct but not fast on
-  very large files.
-
 ## License
 
 MIT, see LICENSE.

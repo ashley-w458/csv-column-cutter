@@ -6,24 +6,60 @@
 //! of that spec to read real-world CSV correctly, one record at a time, from
 //! any `Read` source (a file, a pipe, stdin).
 
-use std::io::{self, Bytes, Read};
-use std::iter::Peekable;
+use std::io::{self, Read};
+
+const BUF_SIZE: usize = 8 * 1024;
 
 /// Reads CSV records from an underlying byte stream.
 ///
 /// Each call to `next()` returns one record as a `Vec<String>`, so a large
 /// input can be processed without holding the whole thing in memory.
+///
+/// Bytes come from an internal buffer refilled in `BUF_SIZE` chunks rather
+/// than one `read()` syscall per byte, which is what a naive `Bytes<R>`
+/// iterator would do.
 pub struct CsvReader<R: Read> {
-    bytes: Peekable<Bytes<R>>,
+    reader: R,
+    buf: Vec<u8>,
+    pos: usize,
+    filled: usize,
     done: bool,
 }
 
 impl<R: Read> CsvReader<R> {
     pub fn new(inner: R) -> Self {
         CsvReader {
-            bytes: inner.bytes().peekable(),
+            reader: inner,
+            buf: vec![0; BUF_SIZE],
+            pos: 0,
+            filled: 0,
             done: false,
         }
+    }
+
+    fn fill(&mut self) -> io::Result<bool> {
+        if self.pos < self.filled {
+            return Ok(true);
+        }
+        self.filled = self.reader.read(&mut self.buf)?;
+        self.pos = 0;
+        Ok(self.filled > 0)
+    }
+
+    fn next_byte(&mut self) -> io::Result<Option<u8>> {
+        if !self.fill()? {
+            return Ok(None);
+        }
+        let b = self.buf[self.pos];
+        self.pos += 1;
+        Ok(Some(b))
+    }
+
+    fn peek_byte(&mut self) -> io::Result<Option<u8>> {
+        if !self.fill()? {
+            return Ok(None);
+        }
+        Ok(Some(self.buf[self.pos]))
     }
 }
 
@@ -45,10 +81,10 @@ impl<R: Read> Iterator for CsvReader<R> {
         let mut read_any = false;
 
         loop {
-            let byte = match self.bytes.next() {
-                Some(Ok(b)) => b,
-                Some(Err(e)) => return Some(Err(e)),
-                None => {
+            let byte = match self.next_byte() {
+                Ok(Some(b)) => b,
+                Err(e) => return Some(Err(e)),
+                Ok(None) => {
                     self.done = true;
                     if !read_any {
                         return None;
@@ -63,11 +99,13 @@ impl<R: Read> Iterator for CsvReader<R> {
 
             if in_quotes {
                 if byte == b'"' {
-                    if let Some(Ok(b'"')) = self.bytes.peek() {
-                        field.push(b'"');
-                        self.bytes.next();
-                    } else {
-                        in_quotes = false;
+                    match self.peek_byte() {
+                        Ok(Some(b'"')) => {
+                            field.push(b'"');
+                            let _ = self.next_byte();
+                        }
+                        Ok(_) => in_quotes = false,
+                        Err(e) => return Some(Err(e)),
                     }
                 } else {
                     field.push(byte);
@@ -93,8 +131,12 @@ impl<R: Read> Iterator for CsvReader<R> {
                     return Some(Ok(fields));
                 }
                 b'\r' => {
-                    if let Some(Ok(b'\n')) = self.bytes.peek() {
-                        self.bytes.next();
+                    match self.peek_byte() {
+                        Ok(Some(b'\n')) => {
+                            let _ = self.next_byte();
+                        }
+                        Ok(_) => {}
+                        Err(e) => return Some(Err(e)),
                     }
                     let s = match finish_field(field) {
                         Ok(s) => s,
